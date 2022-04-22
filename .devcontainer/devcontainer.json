@@ -1,0 +1,28 @@
+{
+	"name": "StockPrice",
+	"service": "dev",
+	"dockerComposeFile": "docker-compose.yml",
+	"workspaceFolder": "/src",
+	"settings": {
+		"lldb.executable": "/usr/bin/lldb",
+		"files.watcherExclude": {
+			"**/target/**": true
+		},
+		"files.autoSave": "afterDelay",
+		"files.autoSaveDelay": 500,
+		"rust-analyzer.checkOnSave.command": "clippy",
+		"editor.formatOnSave": true,
+		"editor.autoIndent": "full",
+		"editor.tabSize": 4,
+		"editor.insertSpaces": true,
+		"editor.comments.insertSpace": true,
+	},
+	"extensions": [
+		"vadimcn.vscode-lldb",
+		"mutantdino.resourcemonitor",
+		"matklad.rust-analyzer",
+		"tamasfe.even-better-toml",
+		"serayuzgur.crates"
+	],
+	"remoteUser": "vscode"
+}

@@ -1,0 +1,58 @@
+version: '3.2'
+services:
+  dev:
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
+      args:
+        - --cap-add=SYS_PTRACE
+        - --security-opt
+        - seccomp=unconfined
+    volumes:
+      - ..:/src
+      - upload_dir:/src/upload
+    ports:
+      - "45612:45612"
+    command: /bin/bash -c "dotnet build; while sleep 1000; do :; done"
+    container_name: stock_price_dev
+    environment: 
+      DB_SERVERNAME: stock_price_rdb_dev
+      DB_USERID: postgres
+      DB_NAME: postgres
+      DB_PORT: 5432
+      DB_PASSWORD: mysecretpassword
+      ASPNETCORE_URLS: http://+:45612
+      ASPNETCORE_ENVIRONMENT: Development
+      FILESTORAGE_HOST: sftp
+      FILESTORAGE_USERID: foo
+      FILESTORAGE_PASSWORD: pass
+      FILESTORAGE_BASEDIR: upload
+    depends_on:
+      - rdb
+      - sftp
+  rdb:
+    build:
+      context: ../postgres
+      dockerfile: Dockerfile
+    container_name: stock_price_rdb_dev
+    volumes:
+      - databsae_volume:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: mysecretpassword
+    ports:
+      - "5432"
+  sftp:
+    image: harunari/sftp-server:stable
+    ports:
+      - "22"
+    volumes:
+      - upload_dir:/home/foo/upload
+    environment:
+      SFTP_USERS: foo:pass:::upload
+volumes:
+  databsae_volume:
+    driver: local
+  upload_dir:
+    driver: local
