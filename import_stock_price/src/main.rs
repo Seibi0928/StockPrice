@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::NaiveDate;
 use futures::pin_mut;
 use rust_decimal::Decimal;
 use ssh2::Session;
@@ -6,10 +6,11 @@ use std::{
     env::{self, VarError},
     net::{TcpStream, ToSocketAddrs},
     path::Path,
+    str::FromStr,
 };
 use tokio_postgres::binary_copy::BinaryCopyInWriter;
 use tokio_postgres::{
-    types::{Date, ToSql, Type},
+    types::{ToSql, Type},
     Client, Error as PostgreError, NoTls,
 };
 
@@ -24,7 +25,7 @@ async fn main() -> Result<(), String> {
     let [host, username, password, base_dir, db_server, db_userid, db_name, db_port, db_password] =
         envs.map(|x| x.unwrap());
 
-    let client =
+    let mut client =
         match connect_database(&db_server, &db_port, &db_name, &db_userid, &db_password).await {
             Ok(client) => client,
             Err(err) => return Err(err.to_string()),
@@ -50,13 +51,27 @@ async fn main() -> Result<(), String> {
         Ok(res) => res,
         Err(err) => return Err(err.to_string()),
     };
-    for result in reader.records() {
+    let mut vec = Vec::new();
+    for result in reader.records().take(10) {
         match result {
-            Ok(record) => println!("{:?}", record),
+            Ok(record) => vec.push(StockPrice {
+                securities_code: record.get(2).unwrap().parse::<i32>().unwrap(),
+                recorded_date: record
+                    .get(3)
+                    .map(|x| NaiveDate::from_str(x).unwrap())
+                    .unwrap(),
+                close_price: record.get(4).map(|x| x.parse::<Decimal>().unwrap()),
+                adjusted_close_price: record.get(5).map(|x| x.parse::<Decimal>().unwrap()),
+                adjusted_close_price_including_ex_divided: record
+                    .get(6)
+                    .map(|x| x.parse::<Decimal>().unwrap()),
+            }),
             Err(err) => return Err(err.to_string()),
         }
     }
-
+    if let Err(err) = bulk_insert(&mut client, &vec).await {
+        return Err(err.to_string());
+    }
     Ok(())
 }
 
@@ -108,8 +123,8 @@ fn get_env_settings() -> [Result<String, (VarError, String)>; 9] {
 }
 
 pub struct StockPrice {
-    pub securities_code: u32,
-    pub recorded_date: Date<Utc>,
+    pub securities_code: i32,
+    pub recorded_date: NaiveDate,
     pub close_price: Option<Decimal>,
     pub adjusted_close_price: Option<Decimal>,
     pub adjusted_close_price_including_ex_divided: Option<Decimal>,
@@ -122,7 +137,7 @@ async fn connect_database(
     user_id: &String,
     password: &String,
 ) -> Result<Client, PostgreError> {
-    let connection_str = &format!("Server={server};Port={port};Database={database};User Id={user_id};Password={password};Pooling=true;Minimum Pool Size=0;Maximum Pool Size=100");
+    let connection_str = &format!("postgresql://{user_id}:{password}@{server}:{port}/{database}");
     let (client, connection) = tokio_postgres::connect(connection_str, NoTls).await?;
 
     tokio::spawn(async move {
@@ -154,7 +169,7 @@ COPY stock_prices
         .await?;
     let writer = BinaryCopyInWriter::new(
         sink,
-        &vec![
+        &[
             Type::INT4,
             Type::DATE,
             Type::NUMERIC,
@@ -162,7 +177,7 @@ COPY stock_prices
             Type::NUMERIC,
         ],
     );
-    write(writer, &data).await?;
+    write(writer, data).await?;
     tx.commit().await?;
     Ok(())
 }

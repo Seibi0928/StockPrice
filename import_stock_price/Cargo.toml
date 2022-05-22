@@ -9,8 +9,8 @@ edition = "2021"
 ssh2 = "0.9.3"
 csv = "1.1.6"
 tokio = { version = "1.18.2", features = ["full"] }
-tokio-postgres = "0.7.6"
+tokio-postgres = { version = "0.7.6", features = ["with-chrono-0_4"] }
 chrono = "0.4.19"
 chrono-tz = "0.6.1"
-rust_decimal = "1.23.1"
+rust_decimal = { version = "1.23.1", features = ["db-tokio-postgres"] }
 futures = "0.3.21"
