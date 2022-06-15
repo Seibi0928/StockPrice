@@ -1,5 +1,9 @@
+mod entity;
+mod reader;
+mod repository;
 use chrono::NaiveDate;
-use futures::pin_mut;
+use entity::StockPrice;
+use repository::{PostgresRepository, Repository};
 use rust_decimal::Decimal;
 use ssh2::Session;
 use std::{
@@ -7,11 +11,6 @@ use std::{
     net::{TcpStream, ToSocketAddrs},
     path::Path,
     str::FromStr,
-};
-use tokio_postgres::binary_copy::BinaryCopyInWriter;
-use tokio_postgres::{
-    types::{ToSql, Type},
-    Client, Error as PostgreError, NoTls,
 };
 
 #[tokio::main]
@@ -24,12 +23,6 @@ async fn main() -> Result<(), String> {
 
     let [host, username, password, base_dir, db_server, db_userid, db_name, db_port, db_password] =
         envs.map(|x| x.unwrap());
-
-    let mut client =
-        match connect_database(&db_server, &db_port, &db_name, &db_userid, &db_password).await {
-            Ok(client) => client,
-            Err(err) => return Err(err.to_string()),
-        };
 
     let maybe_addr = match &format!(r#"{host}:22"#).to_socket_addrs() {
         Ok(res) => res.to_owned().next(),
@@ -69,31 +62,13 @@ async fn main() -> Result<(), String> {
             Err(err) => return Err(err.to_string()),
         }
     }
-    if let Err(err) = bulk_insert(&mut client, &vec).await {
+
+    let mut repository =
+        PostgresRepository::new(db_server, db_port, db_name, db_userid, db_password).await;
+    if let Err(err) = repository.bulk_insert(vec).await {
         return Err(err.to_string());
     }
     Ok(())
-}
-
-fn create_sftp_session(
-    addr: std::net::SocketAddr,
-    username: &str,
-    password: &str,
-) -> Result<ssh2::Sftp, String> {
-    let mut session = match Session::new() {
-        Ok(res) => res,
-        Err(err) => return Err(err.to_string()),
-    };
-    match TcpStream::connect(addr)
-        .map(|tcp| session.set_tcp_stream(tcp))
-        .map(|_| session.handshake())
-        .map(|_| session.userauth_password(username, password))
-    {
-        Ok(_) => {}
-        Err(err) => return Err(err.to_string()),
-    }
-    let sftp = session.sftp().unwrap();
-    Ok(sftp)
 }
 
 fn create_error_messages(envs: &[Result<String, (VarError, String)>; 9]) -> String {
@@ -120,86 +95,4 @@ fn get_env_settings() -> [Result<String, (VarError, String)>; 9] {
         "DB_PASSWORD",
     ]
     .map(|key| env::var(key).map_err(|err| (err, key.to_owned())))
-}
-
-pub struct StockPrice {
-    pub securities_code: i32,
-    pub recorded_date: NaiveDate,
-    pub close_price: Option<Decimal>,
-    pub adjusted_close_price: Option<Decimal>,
-    pub adjusted_close_price_including_ex_divided: Option<Decimal>,
-}
-
-async fn connect_database(
-    server: &String,
-    port: &String,
-    database: &String,
-    user_id: &String,
-    password: &String,
-) -> Result<Client, PostgreError> {
-    let connection_str = &format!("postgresql://{user_id}:{password}@{server}:{port}/{database}");
-    let (client, connection) = tokio_postgres::connect(connection_str, NoTls).await?;
-
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
-    Ok(client)
-}
-
-async fn bulk_insert(
-    client: &mut Client,
-    data: &Vec<StockPrice>,
-) -> Result<(), tokio_postgres::error::Error> {
-    let tx = client.transaction().await?;
-    let sink = tx
-        .copy_in(
-            "
-COPY stock_prices
-(
-    securities_code,
-    recorded_date,
-    close_price,
-    adjusted_close_price,
-    adjusted_close_price_including_ex_divided
-) FROM STDIN BINARY
- ",
-        )
-        .await?;
-    let writer = BinaryCopyInWriter::new(
-        sink,
-        &[
-            Type::INT4,
-            Type::DATE,
-            Type::NUMERIC,
-            Type::NUMERIC,
-            Type::NUMERIC,
-        ],
-    );
-    write(writer, data).await?;
-    tx.commit().await?;
-    Ok(())
-}
-
-async fn write(
-    writer: BinaryCopyInWriter,
-    data: &Vec<StockPrice>,
-) -> Result<(), tokio_postgres::error::Error> {
-    pin_mut!(writer);
-
-    let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
-    for d in data {
-        row.clear();
-        row.push(&d.securities_code);
-        row.push(&d.recorded_date);
-        row.push(&d.close_price);
-        row.push(&d.adjusted_close_price);
-        row.push(&d.adjusted_close_price_including_ex_divided);
-        writer.as_mut().write(&row).await?;
-    }
-
-    writer.finish().await?;
-
-    Ok(())
 }
