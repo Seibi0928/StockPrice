@@ -27,8 +27,8 @@ impl PostgresRepository {
         db_name: String,
         db_userid: String,
         db_password: String,
-    ) -> Self {
-        let client = match PostgresRepository::connect_database(
+    ) -> Result<Self, String> {
+        let client = PostgresRepository::connect_database(
             &db_server,
             &db_port,
             &db_name,
@@ -36,11 +36,9 @@ impl PostgresRepository {
             &db_password,
         )
         .await
-        {
-            Ok(client) => client,
-            Err(err) => panic!("{}", err.to_string()),
-        };
-        Self { client }
+        .map_err(|e| e.to_string())?;
+
+        Ok(Self { client })
     }
 
     async fn connect_database(
