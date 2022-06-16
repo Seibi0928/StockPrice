@@ -8,7 +8,7 @@ use std::{
     str::FromStr,
 };
 
-pub trait Reader {
+pub trait DataReader {
     fn read(&self) -> Result<Vec<StockPrice>, String>;
 }
 
@@ -94,7 +94,7 @@ impl SFTPCSVReader {
     }
 }
 
-impl Reader for SFTPCSVReader {
+impl DataReader for SFTPCSVReader {
     fn read(&self) -> Result<Vec<StockPrice>, String> {
         let reader = self.get_csv_reader(&self.base_dir, &self.filename)?;
         SFTPCSVReader::read_csv(reader)
