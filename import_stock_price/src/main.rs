@@ -1,9 +1,9 @@
 mod entities;
 mod readers;
-mod repositoris;
+mod repositories;
 mod usecases;
 use readers::SFTPCSVReader;
-use repositoris::PostgresRepository;
+use repositories::PostgresRepository;
 use std::env::{self, VarError};
 use usecases::import_stock_prices;
 

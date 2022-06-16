@@ -1,4 +1,4 @@
-use crate::{readers::Reader, repositoris::Repository};
+use crate::{readers::Reader, repositories::Repository};
 
 pub async fn import_stock_prices(
     reader: &impl Reader,
