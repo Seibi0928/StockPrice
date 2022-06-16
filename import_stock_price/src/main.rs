@@ -15,11 +15,11 @@ async fn main() -> Result<(), String> {
         return Err(create_error_messages(&envs));
     }
 
-    let [host, username, password, base_dir, db_server, db_userid, db_name, db_port, db_password] =
+    let [sftp_host, sftp_username, sftp_password, base_dir, db_server, db_userid, db_name, db_port, db_password] =
         envs.map(|x| x.unwrap());
 
     let filename = "PriceExp_2000_2020.csv".to_owned();
-    let reader = SFTPCSVReader::new(host, username, password, base_dir, filename)?;
+    let reader = SFTPCSVReader::new(sftp_host, sftp_username, sftp_password, base_dir, filename)?;
     let mut repository =
         PostgresRepository::new(db_server, db_port, db_name, db_userid, db_password).await?;
 
