@@ -73,7 +73,7 @@ impl SFTPCSVReader {
 
     fn read_csv(mut reader: csv::Reader<ssh2::File>) -> Result<Vec<StockPrice>, String> {
         let mut stock_prices = Vec::new();
-        for result in reader.records().take(10) {
+        for result in reader.records() {
             let record = result
                 .map(SFTPCSVReader::read_stock_price)
                 .map_err(|x| x.to_string())??;
