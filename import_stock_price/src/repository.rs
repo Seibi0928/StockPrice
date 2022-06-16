@@ -39,11 +39,11 @@ impl PostgresRepository {
     }
 
     async fn connect_database(
-        server: &String,
-        port: &String,
-        database: &String,
-        user_id: &String,
-        password: &String,
+        server: &str,
+        port: &str,
+        database: &str,
+        user_id: &str,
+        password: &str,
     ) -> Result<Client, PostgreError> {
         let connection_str =
             &format!("postgresql://{user_id}:{password}@{server}:{port}/{database}");
@@ -59,7 +59,7 @@ impl PostgresRepository {
 
     async fn write(
         writer: BinaryCopyInWriter,
-        data: &Vec<StockPrice>,
+        data: &[StockPrice],
     ) -> Result<(), tokio_postgres::error::Error> {
         pin_mut!(writer);
 
@@ -109,15 +109,13 @@ impl PostgresRepository {
             ],
         );
         PostgresRepository::write(writer, &data).await?;
-        tx.commit().await?;
-        Ok(())
+        tx.commit().await
     }
 }
 
 #[async_trait]
 impl Repository for PostgresRepository {
     async fn insert(&mut self, data: Vec<StockPrice>) -> Result<(), String> {
-        self.bulk_insert(data).await.map_err(|e| e.to_string())?;
-        Ok(())
+        self.bulk_insert(data).await.map_err(|e| e.to_string())
     }
 }
