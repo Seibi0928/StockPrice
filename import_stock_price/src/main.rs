@@ -4,7 +4,7 @@ mod repositories;
 mod usecases;
 use readers::SFTPCSVReader;
 use repositories::PostgresRepository;
-use std::env::{self, VarError};
+use std::env;
 use usecases::import_stock_prices;
 
 #[tokio::main]
@@ -12,7 +12,7 @@ async fn main() -> Result<(), String> {
     let envs = get_env_settings();
 
     if envs.iter().any(|x| x.is_err()) {
-        return Err(create_error_messages(&envs));
+        return Err(create_error_messages(envs));
     }
 
     let [sftp_host, sftp_username, sftp_password, base_dir, db_server, db_userid, db_name, db_port, db_password] =
@@ -26,18 +26,14 @@ async fn main() -> Result<(), String> {
     import_stock_prices(&reader, &mut repository).await
 }
 
-fn create_error_messages(envs: &[Result<String, (VarError, String)>; 9]) -> String {
+fn create_error_messages(envs: [Result<String, String>; 9]) -> String {
     envs.iter()
-        .filter(|x| x.is_err())
-        .map(|x| {
-            let (err, key) = x.as_ref().unwrap_err();
-            err.to_string() + "(" + key + ")"
-        })
+        .filter_map(|x| x.as_ref().err().map(|x| x.to_owned()))
         .collect::<Vec<String>>()
         .join(",\n")
 }
 
-fn get_env_settings() -> [Result<String, (VarError, String)>; 9] {
+fn get_env_settings() -> [Result<String, String>; 9] {
     [
         "FILESTORAGE_HOST",
         "FILESTORAGE_USERID",
@@ -49,5 +45,5 @@ fn get_env_settings() -> [Result<String, (VarError, String)>; 9] {
         "DB_PORT",
         "DB_PASSWORD",
     ]
-    .map(|key| env::var(key).map_err(|err| (err, key.to_owned())))
+    .map(|key| env::var(key).map_err(|err| format!("{err}({key})")))
 }
