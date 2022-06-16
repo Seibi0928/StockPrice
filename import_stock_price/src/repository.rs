@@ -10,10 +10,7 @@ use crate::entity::StockPrice;
 
 #[async_trait]
 pub trait Repository {
-    async fn bulk_insert(
-        &mut self,
-        data: Vec<StockPrice>,
-    ) -> Result<(), tokio_postgres::error::Error>;
+    async fn insert(&mut self, data: Vec<StockPrice>) -> Result<(), String>;
 }
 
 pub struct PostgresRepository {
@@ -81,10 +78,7 @@ impl PostgresRepository {
 
         Ok(())
     }
-}
 
-#[async_trait]
-impl Repository for PostgresRepository {
     async fn bulk_insert(
         &mut self,
         data: Vec<StockPrice>,
@@ -116,6 +110,14 @@ impl Repository for PostgresRepository {
         );
         PostgresRepository::write(writer, &data).await?;
         tx.commit().await?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Repository for PostgresRepository {
+    async fn insert(&mut self, data: Vec<StockPrice>) -> Result<(), String> {
+        self.bulk_insert(data).await.map_err(|e| e.to_string())?;
         Ok(())
     }
 }

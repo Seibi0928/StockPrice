@@ -5,10 +5,9 @@ use chrono::NaiveDate;
 use entity::StockPrice;
 use repository::{PostgresRepository, Repository};
 use rust_decimal::Decimal;
-use ssh2::Session;
 use std::{
     env::{self, VarError},
-    net::{TcpStream, ToSocketAddrs},
+    net::ToSocketAddrs,
     path::Path,
     str::FromStr,
 };
@@ -65,10 +64,7 @@ async fn main() -> Result<(), String> {
 
     let mut repository =
         PostgresRepository::new(db_server, db_port, db_name, db_userid, db_password).await?;
-    repository
-        .bulk_insert(vec)
-        .await
-        .map_err(|e| e.to_string())?;
+    repository.insert(vec).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
