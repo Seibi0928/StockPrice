@@ -1,9 +1,11 @@
-mod entity;
-mod reader;
-mod repository;
-use reader::{Reader, SFTPCSVReader};
-use repository::{PostgresRepository, Repository};
+mod entities;
+mod readers;
+mod repositoris;
+mod usecases;
+use readers::SFTPCSVReader;
+use repositoris::PostgresRepository;
 use std::env::{self, VarError};
+use usecases::import_stock_prices;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
@@ -18,11 +20,10 @@ async fn main() -> Result<(), String> {
 
     let filename = "PriceExp_2000_2020.csv".to_owned();
     let reader = SFTPCSVReader::new(host, username, password, base_dir, filename)?;
-    let stock_prices = reader.read()?;
-
     let mut repository =
         PostgresRepository::new(db_server, db_port, db_name, db_userid, db_password).await?;
-    repository.insert(stock_prices).await
+
+    import_stock_prices(&reader, &mut repository).await
 }
 
 fn create_error_messages(envs: &[Result<String, (VarError, String)>; 9]) -> String {

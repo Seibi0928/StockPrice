@@ -6,7 +6,7 @@ use tokio_postgres::{
     Client, Error as PostgreError, NoTls,
 };
 
-use crate::entity::StockPrice;
+use crate::entities::StockPrice;
 
 #[async_trait]
 pub trait Repository {

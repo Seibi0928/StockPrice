@@ -1,4 +1,4 @@
-use crate::entity::StockPrice;
+use crate::entities::StockPrice;
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use ssh2::{Session, Sftp};
