@@ -1,16 +1,16 @@
+use crate::entities::StockPrice;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use futures::pin_mut;
 use tokio_postgres::{
     binary_copy::BinaryCopyInWriter,
     types::{ToSql, Type},
-    Client, Error as PostgreError, NoTls,
+    Client, NoTls,
 };
-
-use crate::entities::StockPrice;
 
 #[async_trait]
 pub trait Repository {
-    async fn insert(&mut self, data: Vec<StockPrice>) -> Result<(), String>;
+    async fn insert(&mut self, data: Vec<StockPrice>) -> Result<()>;
 }
 
 pub struct PostgresRepository {
@@ -24,7 +24,7 @@ impl PostgresRepository {
         db_name: String,
         db_userid: String,
         db_password: String,
-    ) -> Result<Self, String> {
+    ) -> Result<Self> {
         let client = PostgresRepository::connect_database(
             &db_server,
             &db_port,
@@ -33,7 +33,7 @@ impl PostgresRepository {
             &db_password,
         )
         .await
-        .map_err(|e| e.to_string())?;
+        .context("creating sql client is failed.")?;
 
         Ok(Self { client })
     }
@@ -44,7 +44,7 @@ impl PostgresRepository {
         database: &str,
         user_id: &str,
         password: &str,
-    ) -> Result<Client, PostgreError> {
+    ) -> Result<Client> {
         let connection_str =
             &format!("postgresql://{user_id}:{password}@{server}:{port}/{database}");
         let (client, connection) = tokio_postgres::connect(connection_str, NoTls).await?;
@@ -57,10 +57,7 @@ impl PostgresRepository {
         Ok(client)
     }
 
-    async fn write(
-        writer: BinaryCopyInWriter,
-        data: &[StockPrice],
-    ) -> Result<(), tokio_postgres::error::Error> {
+    async fn write(writer: BinaryCopyInWriter, data: &[StockPrice]) -> Result<()> {
         pin_mut!(writer);
 
         let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
@@ -79,10 +76,7 @@ impl PostgresRepository {
         Ok(())
     }
 
-    async fn bulk_insert(
-        &mut self,
-        data: Vec<StockPrice>,
-    ) -> Result<(), tokio_postgres::error::Error> {
+    async fn bulk_insert(&mut self, data: Vec<StockPrice>) -> Result<()> {
         let tx = self.client.transaction().await?;
         let sink = tx
             .copy_in(
@@ -109,13 +103,17 @@ impl PostgresRepository {
             ],
         );
         PostgresRepository::write(writer, &data).await?;
-        tx.commit().await
+        tx.commit()
+            .await
+            .context("committing transaction is failed.")
     }
 }
 
 #[async_trait]
 impl Repository for PostgresRepository {
-    async fn insert(&mut self, data: Vec<StockPrice>) -> Result<(), String> {
-        self.bulk_insert(data).await.map_err(|e| e.to_string())
+    async fn insert(&mut self, data: Vec<StockPrice>) -> Result<()> {
+        self.bulk_insert(data)
+            .await
+            .context("bulk insert is failed.")
     }
 }

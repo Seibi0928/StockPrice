@@ -1,4 +1,5 @@
 use crate::entities::StockPrice;
+use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use ssh2::{Session, Sftp};
@@ -9,7 +10,7 @@ use std::{
 };
 
 pub trait DataReader {
-    fn read(&self) -> Result<Vec<StockPrice>, String>;
+    fn read(&self) -> Result<Vec<StockPrice>>;
 }
 
 pub struct SFTPCSVReader {
@@ -25,9 +26,9 @@ impl SFTPCSVReader {
         password: String,
         base_dir: String,
         filename: String,
-    ) -> Result<Self, String> {
-        let sftp = SFTPCSVReader::get_addr(host)
-            .and_then(|addr| SFTPCSVReader::create_sftp_session(addr, &username, &password))?;
+    ) -> Result<Self> {
+        let addr = SFTPCSVReader::get_addr(host)?;
+        let sftp = SFTPCSVReader::create_sftp_session(addr, &username, &password)?;
         Ok(Self {
             base_dir,
             filename,
@@ -35,65 +36,59 @@ impl SFTPCSVReader {
         })
     }
 
-    fn get_addr(host: String) -> Result<SocketAddr, String> {
-        match format!(r#"{host}:22"#)
+    fn get_addr(host: String) -> Result<SocketAddr> {
+        format!(r#"{host}:22"#)
             .to_socket_addrs()
-            .map_err(|e| e.to_string())?
+            .context("converting to scokert address is failed.")?
             .next()
-        {
-            Some(addr) => Ok(addr),
-            None => Err("socket address is not found.".to_owned()),
-        }
+            .context("socket address is not found.")
     }
 
     fn create_sftp_session(
         addr: std::net::SocketAddr,
         username: &str,
         password: &str,
-    ) -> Result<ssh2::Sftp, String> {
-        let mut session = Session::new().map_err(|e| e.to_string())?;
+    ) -> Result<ssh2::Sftp> {
+        let mut session = Session::new().context("initializing session is failed.")?;
         _ = TcpStream::connect(addr)
             .map(|tcp| session.set_tcp_stream(tcp))
             .map(|_| session.handshake())
             .map(|_| session.userauth_password(username, password))
-            .map_err(|e| e.to_string())?;
-        session.sftp().map_err(|e| e.to_string())
+            .context("creating tcp session is failed.")?;
+        session.sftp().context("initializing sftp is failed.")
     }
 
-    fn get_csv_reader(
-        &self,
-        base_dir: &str,
-        filename: &str,
-    ) -> Result<csv::Reader<ssh2::File>, String> {
+    fn get_csv_reader(&self, base_dir: &str, filename: &str) -> Result<csv::Reader<ssh2::File>> {
         self.sftp
             .open(Path::new(&format!("{base_dir}/{filename}")))
             .map(csv::Reader::from_reader)
-            .map_err(|e| e.to_string())
+            .context("creating csv reader is failed.")
     }
 
-    fn read_csv(mut reader: csv::Reader<ssh2::File>) -> Result<Vec<StockPrice>, String> {
+    fn read_csv(mut reader: csv::Reader<ssh2::File>) -> Result<Vec<StockPrice>> {
         let mut stock_prices = Vec::new();
         for result in reader.records() {
             let record = result
                 .map(SFTPCSVReader::read_stock_price)
-                .map_err(|x| x.to_string())??;
+                .context("reading record is failed.")??;
             stock_prices.push(record);
         }
         Ok(stock_prices)
     }
 
-    fn read_stock_price(record: csv::StringRecord) -> Result<StockPrice, String> {
-        let securities_code = match record.get(2) {
-            Some(x) => x.parse::<i32>(),
-            None => return Err("A securities_code connot be retrieved.".to_owned()),
-        }
-        .map_err(|e| format!("securities_code cannot be parsed:{e}"))?;
+    fn read_stock_price(record: csv::StringRecord) -> Result<StockPrice> {
+        let securities_code = record
+            .get(2)
+            .context("A securities_code connot be retrieved.")?
+            .parse::<i32>()
+            .context("securities_code cannot be parsed")?;
 
-        let recorded_date = match record.get(3) {
-            Some(x) => NaiveDate::from_str(x),
-            None => return Err("A recorded_date connot be retrieved.".to_owned()),
-        }
-        .map_err(|e| format!("recorded_date cannot be parsed.:{e}"))?;
+        let recorded_date = NaiveDate::from_str(
+            record
+                .get(3)
+                .context("A recorded_date connot be retrieved.")?,
+        )
+        .context("recorded_date cannot be parsed.")?;
 
         let close_price = record.get(4).and_then(|x| x.parse::<Decimal>().ok());
 
@@ -113,7 +108,7 @@ impl SFTPCSVReader {
 }
 
 impl DataReader for SFTPCSVReader {
-    fn read(&self) -> Result<Vec<StockPrice>, String> {
+    fn read(&self) -> Result<Vec<StockPrice>> {
         let reader = self.get_csv_reader(&self.base_dir, &self.filename)?;
         SFTPCSVReader::read_csv(reader)
     }
