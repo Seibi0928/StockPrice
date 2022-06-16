@@ -74,23 +74,41 @@ impl SFTPCSVReader {
     fn read_csv(mut reader: csv::Reader<ssh2::File>) -> Result<Vec<StockPrice>, String> {
         let mut stock_prices = Vec::new();
         for result in reader.records().take(10) {
-            match result {
-                Ok(record) => stock_prices.push(StockPrice {
-                    securities_code: record.get(2).unwrap().parse::<i32>().unwrap(),
-                    recorded_date: record
-                        .get(3)
-                        .map(|x| NaiveDate::from_str(x).unwrap())
-                        .unwrap(),
-                    close_price: record.get(4).map(|x| x.parse::<Decimal>().unwrap()),
-                    adjusted_close_price: record.get(5).map(|x| x.parse::<Decimal>().unwrap()),
-                    adjusted_close_price_including_ex_divided: record
-                        .get(6)
-                        .map(|x| x.parse::<Decimal>().unwrap()),
-                }),
-                Err(err) => return Err(err.to_string()),
-            }
+            let record = result
+                .map(SFTPCSVReader::read_stock_price)
+                .map_err(|x| x.to_string())??;
+            stock_prices.push(record);
         }
         Ok(stock_prices)
+    }
+
+    fn read_stock_price(record: csv::StringRecord) -> Result<StockPrice, String> {
+        let securities_code = match record.get(2) {
+            Some(x) => x.parse::<i32>(),
+            None => return Err("A securities_code connot be retrieved.".to_owned()),
+        }
+        .map_err(|e| format!("securities_code cannot be parsed:{e}"))?;
+
+        let recorded_date = match record.get(3) {
+            Some(x) => NaiveDate::from_str(x),
+            None => return Err("A recorded_date connot be retrieved.".to_owned()),
+        }
+        .map_err(|e| format!("recorded_date cannot be parsed.:{e}"))?;
+
+        let close_price = record.get(4).and_then(|x| x.parse::<Decimal>().ok());
+
+        let adjusted_close_price = record.get(5).and_then(|x| x.parse::<Decimal>().ok());
+
+        let adjusted_close_price_including_ex_divided =
+            record.get(6).and_then(|x| x.parse::<Decimal>().ok());
+
+        Ok(StockPrice {
+            securities_code,
+            recorded_date,
+            close_price,
+            adjusted_close_price,
+            adjusted_close_price_including_ex_divided,
+        })
     }
 }
 
