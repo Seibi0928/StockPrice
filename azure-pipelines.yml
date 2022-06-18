@@ -20,3 +20,15 @@ steps:
     displayName: cargo build
   - script: cargo test --manifest-path ./import_stock_price/Cargo.toml
     displayName: cargo test
+
+  - task: Docker@2
+    displayName: 'build and push import stock price batch image'
+    inputs:
+      containerRegistry: 'dockerRegistryServiceConnection'
+      repository: 'harunari/import_stock_price'
+      command: 'buildAndPush'
+      Dockerfile: './import_stock_price/Dockerfile'
+      buildContext: './import_stock_price'
+      tags: |
+        stable-$(Build.BuildId)
+        stable
