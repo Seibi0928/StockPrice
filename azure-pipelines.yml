@@ -5,8 +5,6 @@ strategy:
   matrix:
     stable:
       rustup_toolchain: stable
-    beta:
-      rustup_toolchain: beta
 
 pool:
   vmImage: ubuntu-latest
