@@ -7,31 +7,57 @@ use clap::{App, Arg};
 use readers::SFTPCSVReader;
 use repositories::PostgresRepository;
 use std::env;
+use tracing::{error, info, warn, Level};
 use usecases::import_stock_prices;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
+    init_logger();
+
     let arg_matches = set_console();
     let filename = if let Some(filename) = arg_matches.value_of("csv_file") {
         filename.to_owned()
     } else {
-        println!("No file specified.");
-        return Ok(());
+        warn!(message = "No file specified.");
+        return;
     };
-    let envs = get_env_settings();
 
+    info!("import task was started.");
+    match execute_import(filename).await {
+        Ok(()) => info!("import task was suceeded."),
+        Err(e) => {
+            let traces = &*e
+                .chain()
+                .map(|e| e.to_string())
+                .collect::<Vec<String>>()
+                .join(",\n");
+            error!(message = &*e, trace = traces);
+            info!("import task was failed.");
+        }
+    };
+}
+
+async fn execute_import(filename: String) -> Result<(), anyhow::Error> {
+    let envs = get_env_settings();
     if envs.iter().any(|x| x.is_err()) {
         bail!(create_error_messages(envs));
     }
-
     let [sftp_host, sftp_username, sftp_password, base_dir, db_server, db_userid, db_name, db_port, db_password] =
         envs.map(|x| x.unwrap());
-
     let reader = SFTPCSVReader::new(sftp_host, sftp_username, sftp_password, base_dir, filename)?;
     let mut repository =
         PostgresRepository::new(db_server, db_port, db_name, db_userid, db_password).await?;
-
     import_stock_prices(&reader, &mut repository).await
+}
+
+fn init_logger() {
+    tracing_subscriber::fmt()
+        // filter spans/events with level TRACE or higher.
+        .with_max_level(Level::INFO)
+        .json()
+        .flatten_event(true)
+        // build but do not install the subscriber.
+        .init();
 }
 
 fn set_console() -> clap::ArgMatches {
