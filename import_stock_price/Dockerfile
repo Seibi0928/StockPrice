@@ -1,11 +1,11 @@
 FROM rust:1.61 AS builder
 
 WORKDIR /import_stock_price
-COPY Cargo.toml Cargo.toml
+COPY ./import_stock_price/Cargo.toml Cargo.toml
 RUN mkdir src
 RUN echo "fn main(){}" > src/main.rust
 RUN cargo build --release
-COPY ./src ./src
+COPY ./import_stock_price/src ./src
 RUN rm -f target/release/deps/import_stock_price*
 RUN cargo build --release
 
