@@ -79,10 +79,27 @@ impl PostgresRepository {
 
     async fn bulk_insert(&mut self, data: Vec<StockPrice>) -> Result<()> {
         let tx = self.client.transaction().await?;
+        // 重複したデータの挿入でエラーにならないように
+        // あらかじめ全データを一時テーブルへ格納し、
+        // 存在しないデータのみを実テーブルに移動させる
         let temp_table = create_temp_table(&tx).await?;
-        let sink = tx
-            .copy_in(&*format!(
-                "
+        bulk_copy_to_temp_table(&temp_table, &tx, data).await?;
+        transfer_data_to_actual_table(&temp_table, &tx).await?;
+
+        tx.commit()
+            .await
+            .context("committing transaction is failed.")
+    }
+}
+
+async fn bulk_copy_to_temp_table(
+    temp_table: &str,
+    tx: &tokio_postgres::Transaction<'_>,
+    data: Vec<StockPrice>,
+) -> Result<(), anyhow::Error> {
+    let sink = tx
+        .copy_in(&*format!(
+            "
         COPY {temp_table}
         (
             securities_code,
@@ -92,39 +109,38 @@ impl PostgresRepository {
             adjusted_close_price_including_ex_divided
         ) FROM STDIN BINARY;
         "
-            ))
-            .await?;
-        let writer = BinaryCopyInWriter::new(
-            sink,
-            &[
-                Type::INT4,
-                Type::DATE,
-                Type::NUMERIC,
-                Type::NUMERIC,
-                Type::NUMERIC,
-            ],
-        );
-        PostgresRepository::write(writer, &data).await?;
-
-        transfer_data_to_actual_table(&temp_table, &tx).await?;
-
-        tx.commit()
-            .await
-            .context("committing transaction is failed.")
-    }
+        ))
+        .await
+        .context("bulk copy is failed.")?;
+    let writer = BinaryCopyInWriter::new(
+        sink,
+        &[
+            Type::INT4,
+            Type::DATE,
+            Type::NUMERIC,
+            Type::NUMERIC,
+            Type::NUMERIC,
+        ],
+    );
+    PostgresRepository::write(writer, &data).await?;
+    Ok(())
 }
 
 async fn transfer_data_to_actual_table<'a>(
     temp_table: &str,
     tx: &'a tokio_postgres::Transaction<'_>,
-) -> Result<(), anyhow::Error> {
+) -> Result<()> {
     tx.query(
         &*format!(
             "
             INSERT INTO
                 stock_prices
             SELECT
-                *
+                TMP.securities_code,
+                TMP.recorded_date,
+                TMP.close_price,
+                TMP.adjusted_close_price,
+                TMP.adjusted_close_price_including_ex_divided
             FROM
                 {temp_table} TMP
             LEFT OUTER JOIN
@@ -140,19 +156,20 @@ async fn transfer_data_to_actual_table<'a>(
         ),
         &[],
     )
-    .await?;
+    .await
+    .context("executing insert into query is failed.")?;
     Ok(())
 }
 
-async fn create_temp_table(tx: &tokio_postgres::Transaction<'_>) -> Result<String, anyhow::Error> {
-    let guid = Uuid::new_v4().to_string();
+async fn create_temp_table(tx: &tokio_postgres::Transaction<'_>) -> Result<String> {
+    let guid = Uuid::new_v4().simple().to_string();
     let temp_table = format!("temp_stock_prices_{guid}");
     tx.query(
         &*format!(
             "
         CREATE TEMP TABLE {temp_table}
         (
-            ecurities_code int not null,
+            securities_code int not null,
             recorded_date date not null,
             close_price decimal null,
             adjusted_close_price decimal null,
@@ -162,7 +179,8 @@ async fn create_temp_table(tx: &tokio_postgres::Transaction<'_>) -> Result<Strin
         ),
         &[],
     )
-    .await?;
+    .await
+    .context("creating temp table is failed.")?;
     Ok(temp_table)
 }
 
