@@ -81,7 +81,7 @@ impl PostgresRepository {
         let tx = self.client.transaction().await?;
         // 重複したデータの挿入でエラーにならないように
         // あらかじめ全データを一時テーブルへ格納し、
-        // 存在しないデータのみを実テーブルに移動させる
+        // 新規データのみを実テーブルに移動させる
         let temp_table = create_temp_table(&tx).await?;
         bulk_copy_to_temp_table(&temp_table, &tx, data).await?;
         transfer_data_to_actual_table(&temp_table, &tx).await?;
