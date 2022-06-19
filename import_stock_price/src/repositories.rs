@@ -7,6 +7,7 @@ use tokio_postgres::{
     types::{ToSql, Type},
     Client, NoTls,
 };
+use uuid::Uuid;
 
 #[async_trait]
 pub trait Repository {
@@ -78,19 +79,20 @@ impl PostgresRepository {
 
     async fn bulk_insert(&mut self, data: Vec<StockPrice>) -> Result<()> {
         let tx = self.client.transaction().await?;
+        let temp_table = create_temp_table(&tx).await?;
         let sink = tx
-            .copy_in(
+            .copy_in(&*format!(
                 "
-        COPY stock_prices
+        COPY {temp_table}
         (
             securities_code,
             recorded_date,
             close_price,
             adjusted_close_price,
             adjusted_close_price_including_ex_divided
-        ) FROM STDIN BINARY
-        ",
-            )
+        ) FROM STDIN BINARY;
+        "
+            ))
             .await?;
         let writer = BinaryCopyInWriter::new(
             sink,
@@ -103,10 +105,65 @@ impl PostgresRepository {
             ],
         );
         PostgresRepository::write(writer, &data).await?;
+
+        transfer_data_to_actual_table(&temp_table, &tx).await?;
+
         tx.commit()
             .await
             .context("committing transaction is failed.")
     }
+}
+
+async fn transfer_data_to_actual_table<'a>(
+    temp_table: &str,
+    tx: &'a tokio_postgres::Transaction<'_>,
+) -> Result<(), anyhow::Error> {
+    tx.query(
+        &*format!(
+            "
+            INSERT INTO
+                stock_prices
+            SELECT
+                *
+            FROM
+                {temp_table} TMP
+            LEFT OUTER JOIN
+                stock_prices SP
+            ON
+                TMP.securities_code = SP.securities_code
+            AND
+                TMP.recorded_date = SP.recorded_date
+            WHERE
+                SP.securities_code IS NULL
+            AND 
+                SP.recorded_date IS NULL;"
+        ),
+        &[],
+    )
+    .await?;
+    Ok(())
+}
+
+async fn create_temp_table(tx: &tokio_postgres::Transaction<'_>) -> Result<String, anyhow::Error> {
+    let guid = Uuid::new_v4().to_string();
+    let temp_table = format!("temp_stock_prices_{guid}");
+    tx.query(
+        &*format!(
+            "
+        CREATE TEMP TABLE {temp_table}
+        (
+            ecurities_code int not null,
+            recorded_date date not null,
+            close_price decimal null,
+            adjusted_close_price decimal null,
+            adjusted_close_price_including_ex_divided decimal null,
+            PRIMARY KEY (securities_code, recorded_date)
+        );"
+        ),
+        &[],
+    )
+    .await?;
+    Ok(temp_table)
 }
 
 #[async_trait]
