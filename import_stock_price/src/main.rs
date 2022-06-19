@@ -24,7 +24,7 @@ async fn main() {
 
     info!("import task was started.");
     match execute_import(filename).await {
-        Ok(()) => info!("import task was suceeded."),
+        Ok(()) => info!("import task was succeeded."),
         Err(e) => {
             let traces = &*e
                 .chain()

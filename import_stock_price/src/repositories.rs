@@ -7,6 +7,7 @@ use tokio_postgres::{
     types::{ToSql, Type},
     Client, NoTls,
 };
+use tracing::info;
 use uuid::Uuid;
 
 #[async_trait]
@@ -130,9 +131,10 @@ async fn transfer_data_to_actual_table<'a>(
     temp_table: &str,
     tx: &'a tokio_postgres::Transaction<'_>,
 ) -> Result<()> {
-    tx.query(
-        &*format!(
-            "
+    let rows = tx
+        .query(
+            &*format!(
+                "
             INSERT INTO
                 stock_prices
             SELECT
@@ -153,11 +155,14 @@ async fn transfer_data_to_actual_table<'a>(
                 SP.securities_code IS NULL
             AND 
                 SP.recorded_date IS NULL;"
-        ),
-        &[],
-    )
-    .await
-    .context("executing insert into query is failed.")?;
+            ),
+            &[],
+        )
+        .await
+        .context("executing insert into query is failed.")?;
+    let inserted_size = rows.len();
+    let message = &*format!("{inserted_size} rows were inserted.");
+    info!(message);
     Ok(())
 }
 
