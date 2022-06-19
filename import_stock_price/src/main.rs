@@ -32,7 +32,7 @@ async fn main() {
                 .collect::<Vec<String>>()
                 .join(",\n");
             error!(message = &*e, trace = traces);
-            info!("import task was failed.");
+            warn!("import task was failed.");
         }
     };
 }
