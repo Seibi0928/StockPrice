@@ -9,7 +9,7 @@ COPY ./import_stock_price/src ./src
 RUN rm -f target/release/deps/import_stock_price*
 RUN cargo build --release
 
-FROM debian:10.4
+FROM rust:1.60
 
 COPY --from=builder /import_stock_price/target/release/import_stock_price /usr/local/bin/import_stock_price
 CMD ["import_stock_price"]
