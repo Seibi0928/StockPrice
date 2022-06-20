@@ -38,7 +38,7 @@ steps:
       repository: 'harunari/stock_price_repository'
       command: 'buildAndPush'
       Dockerfile: './postgres/Dockerfile'
-      buildContext: '.'
+      buildContext: './postgres'
       tags: |
         stable-$(Build.BuildId)
         stable
