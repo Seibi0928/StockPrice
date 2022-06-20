@@ -30,3 +30,15 @@ steps:
       tags: |
         stable-$(Build.BuildId)
         stable
+
+  - task: Docker@2
+    displayName: 'build and push stock price repository image'
+    inputs:
+      containerRegistry: 'dockerRegistryServiceConnection'
+      repository: 'harunari/stock_price_repository'
+      command: 'buildAndPush'
+      Dockerfile: './postgres/Dockerfile'
+      buildContext: '.'
+      tags: |
+        stable-$(Build.BuildId)
+        stable
