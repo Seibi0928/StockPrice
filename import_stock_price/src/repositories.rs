@@ -50,11 +50,9 @@ impl PostgresRepository {
             &format!("postgresql://{user_id}:{password}@{server}:{port}/{database}");
         let (client, connection) = tokio_postgres::connect(connection_str, NoTls).await?;
 
-        tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                eprintln!("connection error: {}", e);
-            }
-        });
+        tokio::spawn(connection)
+            .await
+            .context("connection error.")??;
         Ok(client)
     }
 
