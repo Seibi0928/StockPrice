@@ -2,77 +2,30 @@ use crate::entities::StockPrice;
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
-use ssh2::{Session, Sftp};
-use std::{
-    net::{SocketAddr, TcpStream, ToSocketAddrs},
-    path::Path,
-    str::FromStr,
-};
+use std::str::FromStr;
 
 pub trait DataReader {
-    fn read(&self) -> Result<Vec<StockPrice>>;
+    fn read<'a>(&'a mut self) -> Box<dyn Iterator<Item = StockPrice> + 'a>;
 }
 
-pub struct SFTPCSVReader {
-    base_dir: String,
-    filename: String,
-    sftp: Sftp,
+pub struct SFTPCSVReader<'a> {
+    reader: &'a mut csv::Reader<ssh2::File>,
 }
 
-impl SFTPCSVReader {
-    pub fn new(
-        host: String,
-        username: String,
-        password: String,
-        base_dir: String,
-        filename: String,
-    ) -> Result<Self> {
-        let addr = SFTPCSVReader::get_addr(host)?;
-        let sftp = SFTPCSVReader::create_sftp_session(addr, &username, &password)?;
-        Ok(Self {
-            base_dir,
-            filename,
-            sftp,
-        })
+impl<'a> SFTPCSVReader<'a> {
+    pub fn new(reader: &'a mut csv::Reader<ssh2::File>) -> Self {
+        Self { reader }
     }
 
-    fn get_addr(host: String) -> Result<SocketAddr> {
-        format!(r#"{host}:22"#)
-            .to_socket_addrs()
-            .context("converting to scokert address is failed.")?
-            .next()
-            .context("socket address is not found.")
-    }
+    fn read_csv(
+        reader: &'a mut csv::Reader<ssh2::File>,
+    ) -> Result<impl Iterator<Item = StockPrice> + 'a> {
+        // let mut stock_prices = Vec::new();
+        let stock_prices = reader
+            .records()
+            .map(|result| SFTPCSVReader::read_stock_price(result.unwrap()).unwrap());
 
-    fn create_sftp_session(
-        addr: std::net::SocketAddr,
-        username: &str,
-        password: &str,
-    ) -> Result<ssh2::Sftp> {
-        let mut session = Session::new().context("initializing session is failed.")?;
-        _ = TcpStream::connect(addr)
-            .map(|tcp| session.set_tcp_stream(tcp))
-            .map(|_| session.handshake())
-            .map(|_| session.userauth_password(username, password))
-            .context("creating tcp session is failed.")?;
-        session.sftp().context("initializing sftp is failed.")
-    }
-
-    fn get_csv_reader(&self, base_dir: &str, filename: &str) -> Result<csv::Reader<ssh2::File>> {
-        self.sftp
-            .open(Path::new(&format!("{base_dir}/{filename}")))
-            .map(csv::Reader::from_reader)
-            .context("creating csv reader is failed.")
-    }
-
-    fn read_csv(mut reader: csv::Reader<ssh2::File>) -> Result<Vec<StockPrice>> {
-        let mut stock_prices = Vec::new();
-        for result in reader.records() {
-            let record = result
-                .map(SFTPCSVReader::read_stock_price)
-                .context("reading record is failed.")??;
-            stock_prices.push(record);
-        }
+        // stock_prices.push(record);
         Ok(stock_prices)
     }
 
@@ -107,9 +60,8 @@ impl SFTPCSVReader {
     }
 }
 
-impl DataReader for SFTPCSVReader {
-    fn read(&self) -> Result<Vec<StockPrice>> {
-        let reader = self.get_csv_reader(&self.base_dir, &self.filename)?;
-        SFTPCSVReader::read_csv(reader)
+impl DataReader for SFTPCSVReader<'_> {
+    fn read<'a>(&'a mut self) -> Box<dyn Iterator<Item = StockPrice> + 'a> {
+        Box::new(SFTPCSVReader::read_csv(self.reader).unwrap())
     }
 }

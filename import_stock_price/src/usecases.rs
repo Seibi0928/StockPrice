@@ -1,12 +1,14 @@
-use anyhow::Context;
+use itertools::Itertools;
 
 use crate::{readers::DataReader, repositories::Repository};
 use anyhow::Result;
 
 pub async fn import_stock_prices(
-    reader: &impl DataReader,
+    reader: &mut impl DataReader,
     repository: &mut impl Repository,
 ) -> Result<()> {
-    let stock_prices = reader.read().context("reading stock prices is failed.")?;
-    repository.insert(stock_prices).await
+    for chunked in reader.read().chunks(10000).into_iter() {
+        repository.insert(chunked.collect_vec()).await?;
+    }
+    Ok(())
 }
