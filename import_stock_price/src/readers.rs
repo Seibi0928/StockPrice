@@ -5,7 +5,7 @@ use rust_decimal::Decimal;
 use std::str::FromStr;
 
 pub trait DataReader {
-    fn read<'a>(&'a mut self) -> Box<dyn Iterator<Item = StockPrice> + 'a>;
+    fn read<'a>(&'a mut self) -> Box<dyn Iterator<Item = Result<StockPrice>> + 'a>;
 }
 
 pub struct SFTPCSVReader<'a> {
@@ -15,18 +15,6 @@ pub struct SFTPCSVReader<'a> {
 impl<'a> SFTPCSVReader<'a> {
     pub fn new(reader: &'a mut csv::Reader<ssh2::File>) -> Self {
         Self { reader }
-    }
-
-    fn read_csv(
-        reader: &'a mut csv::Reader<ssh2::File>,
-    ) -> Result<impl Iterator<Item = StockPrice> + 'a> {
-        // let mut stock_prices = Vec::new();
-        let stock_prices = reader
-            .records()
-            .map(|result| SFTPCSVReader::read_stock_price(result.unwrap()).unwrap());
-
-        // stock_prices.push(record);
-        Ok(stock_prices)
     }
 
     fn read_stock_price(record: csv::StringRecord) -> Result<StockPrice> {
@@ -61,7 +49,11 @@ impl<'a> SFTPCSVReader<'a> {
 }
 
 impl DataReader for SFTPCSVReader<'_> {
-    fn read<'a>(&'a mut self) -> Box<dyn Iterator<Item = StockPrice> + 'a> {
-        Box::new(SFTPCSVReader::read_csv(self.reader).unwrap())
+    fn read<'a>(&'a mut self) -> Box<dyn Iterator<Item = Result<StockPrice>> + 'a> {
+        Box::new(
+            self.reader
+                .records()
+                .map(|result| SFTPCSVReader::read_stock_price(result?)),
+        )
     }
 }
