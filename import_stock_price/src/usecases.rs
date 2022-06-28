@@ -1,12 +1,25 @@
-use anyhow::Context;
-
 use crate::{readers::DataReader, repositories::Repository};
 use anyhow::Result;
+use itertools::Itertools;
+use tracing::warn;
 
 pub async fn import_stock_prices(
-    reader: &impl DataReader,
+    reader: &mut impl DataReader,
     repository: &mut impl Repository,
 ) -> Result<()> {
-    let stock_prices = reader.read().context("reading stock prices is failed.")?;
-    repository.insert(stock_prices).await
+    for chunked in reader
+        .read()
+        .filter_map(|result| match result {
+            Ok(r) => Some(r),
+            Err(e) => {
+                warn!(message = "invalid record.", trace = &*e);
+                None
+            }
+        })
+        .chunks(5000)
+        .into_iter()
+    {
+        repository.insert(chunked.collect_vec()).await?;
+    }
+    Ok(())
 }
