@@ -42,7 +42,7 @@ async fn main() {
     };
 }
 
-async fn execute_import(filename: String) -> Result<(), anyhow::Error> {
+async fn execute_import(filename: String) -> Result<()> {
     let envs = get_env_settings();
     if envs.iter().any(|x| x.is_err()) {
         bail!(create_error_messages(envs));
@@ -51,7 +51,7 @@ async fn execute_import(filename: String) -> Result<(), anyhow::Error> {
         envs.map(|x| x.unwrap());
     let addr = get_addr(sftp_host)?;
     let sftp = create_sftp_session(addr, &sftp_username, &sftp_password)?;
-    let mut file_reader = get_file_reader(sftp, &base_dir, &filename).unwrap();
+    let mut file_reader = get_file_reader(sftp, &base_dir, &filename)?;
     let mut reader = SFTPCSVReader::new(&mut file_reader);
     let mut repository =
         PostgresRepository::new(db_server, db_port, db_name, db_userid, db_password).await?;
